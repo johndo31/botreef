@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.pnp.*
+.yarn/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+age-key.txt
+secrets.enc.yaml
+
+# Database
+*.db
+*.db-wal
+*.db-shm
+
+# Workspaces and sandboxes
+workspaces/
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Test coverage
+coverage/
+
+# Docker volumes
+docker-data/
+
+# Redis/Valkey data
+dump.rdb
