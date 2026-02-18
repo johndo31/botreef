@@ -12,6 +12,7 @@ export interface JobPayload {
   autoCreatePr: boolean;
   requireApproval: boolean;
   engineType: string;
+  botId?: string;
   metadata?: Record<string, unknown>;
 }
 

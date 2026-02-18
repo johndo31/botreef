@@ -17,6 +17,8 @@ export function runMigrations() {
     { name: "kanban_columns", def: schema.kanbanColumns },
     { name: "kanban_stories", def: schema.kanbanStories },
     { name: "dev_servers", def: schema.devServers },
+    { name: "bots", def: schema.bots },
+    { name: "bot_journal", def: schema.botJournal },
   ];
 
   for (const table of tables) {
@@ -153,6 +155,32 @@ function createTablesIfNotExist(db: ReturnType<typeof getDb>) {
     stopped_at TEXT
   )`);
 
+  db.run(sql`CREATE TABLE IF NOT EXISTS bots (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    engine_type TEXT NOT NULL DEFAULT 'claude-code',
+    model TEXT,
+    system_prompt TEXT,
+    status TEXT NOT NULL DEFAULT 'idle',
+    poll_interval_seconds INTEGER NOT NULL DEFAULT 30,
+    max_concurrent_stories INTEGER NOT NULL DEFAULT 1,
+    idle_behavior TEXT NOT NULL DEFAULT 'wait',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`);
+
+  db.run(sql`CREATE TABLE IF NOT EXISTS bot_journal (
+    id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL REFERENCES bots(id),
+    job_id TEXT REFERENCES jobs(id),
+    entry_type TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    details TEXT,
+    story_id TEXT,
+    created_at TEXT NOT NULL
+  )`);
+
   // Create indexes
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_jobs_project_id ON jobs(project_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`);
@@ -160,4 +188,8 @@ function createTablesIfNotExist(db: ReturnType<typeof getDb>) {
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_kanban_stories_board ON kanban_stories(board_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_kanban_stories_column ON kanban_stories(column_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_bots_project ON bots(project_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_bots_status ON bots(status)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_bot_journal_bot ON bot_journal(bot_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_bot_journal_job ON bot_journal(job_id)`);
 }

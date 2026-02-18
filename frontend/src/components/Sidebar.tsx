@@ -46,6 +46,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="p-3 border-t border-gray-800">
+        <NavLink to="/bots" className={linkClass}>Bots</NavLink>
         <NavLink to="/settings" className={linkClass}>Settings</NavLink>
       </div>
     </aside>

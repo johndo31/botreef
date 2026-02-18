@@ -1,88 +1,146 @@
+import { and, eq, asc } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { projects } from "../db/schema.js";
+import { kanbanColumns, kanbanStories } from "../db/schema.js";
 import { getBoardByProject, getBoard, type Board } from "./board.js";
-import { getAgentTodoStories, moveStory, updateStory, type Story } from "./stories.js";
+import { moveStory, updateStory, type Story } from "./stories.js";
 import { generateId } from "../util/id.js";
 import type { InboundMessage } from "../types/inbound-message.js";
 import { logger } from "../util/logger.js";
-
-export interface AgentLoopConfig {
-  enabled: boolean;
-  pollIntervalSeconds: number;
-  maxConcurrentStories: number;
-  idleBehavior: "wait" | "discovery";
-}
+import type { Bot } from "../bots/manager.js";
+import { getBot, updateBotStatus, listBots } from "../bots/manager.js";
+import { writeJournalEntry } from "../bots/journal.js";
 
 export interface AgentLoopDeps {
   submitMessage: (message: InboundMessage) => Promise<string>;
-  config: AgentLoopConfig;
 }
 
-let _running = false;
-let _timer: ReturnType<typeof setInterval> | null = null;
-let _activeStories = 0;
+interface BotLoop {
+  botId: string;
+  timer: ReturnType<typeof setInterval>;
+  activeStories: number;
+}
 
-export function startAgentLoop(deps: AgentLoopDeps): void {
-  if (_running) return;
-  _running = true;
+const _botLoops = new Map<string, BotLoop>();
+
+export function startBotLoop(bot: Bot, deps: AgentLoopDeps): void {
+  if (_botLoops.has(bot.id)) return;
 
   logger.info(
-    { pollInterval: deps.config.pollIntervalSeconds, maxConcurrent: deps.config.maxConcurrentStories },
-    "Agent loop started",
+    { botId: bot.id, name: bot.name, pollInterval: bot.pollIntervalSeconds },
+    "Bot loop started",
   );
 
-  tickAgentLoop(deps).catch((err) => {
-    logger.error({ err }, "Agent loop tick error");
+  const loop: BotLoop = {
+    botId: bot.id,
+    timer: null as any,
+    activeStories: 0,
+  };
+
+  tickBotLoop(bot.id, deps).catch((err) => {
+    logger.error({ botId: bot.id, err }, "Bot loop tick error");
   });
 
-  _timer = setInterval(() => {
-    tickAgentLoop(deps).catch((err) => {
-      logger.error({ err }, "Agent loop tick error");
+  loop.timer = setInterval(() => {
+    tickBotLoop(bot.id, deps).catch((err) => {
+      logger.error({ botId: bot.id, err }, "Bot loop tick error");
     });
-  }, deps.config.pollIntervalSeconds * 1000);
+  }, bot.pollIntervalSeconds * 1000);
+
+  _botLoops.set(bot.id, loop);
 }
 
-export function stopAgentLoop(): void {
-  _running = false;
-  if (_timer) {
-    clearInterval(_timer);
-    _timer = null;
+export function stopBotLoop(botId: string): void {
+  const loop = _botLoops.get(botId);
+  if (loop) {
+    clearInterval(loop.timer);
+    _botLoops.delete(botId);
+    logger.info({ botId }, "Bot loop stopped");
   }
-  logger.info("Agent loop stopped");
 }
 
-export function isAgentLoopRunning(): boolean {
-  return _running;
+export function stopAllBotLoops(): void {
+  for (const [botId] of _botLoops) {
+    stopBotLoop(botId);
+  }
+  logger.info("All bot loops stopped");
 }
 
-async function tickAgentLoop(deps: AgentLoopDeps): Promise<void> {
-  if (!_running) return;
-  if (_activeStories >= deps.config.maxConcurrentStories) return;
+export function isBotLoopRunning(botId: string): boolean {
+  return _botLoops.has(botId);
+}
 
+export function startAllBotLoops(deps: AgentLoopDeps): void {
+  const allBots = listBots();
+  for (const bot of allBots) {
+    if (bot.status !== "stopped" && bot.status !== "paused") {
+      startBotLoop(bot, deps);
+    }
+  }
+}
+
+async function tickBotLoop(botId: string, deps: AgentLoopDeps): Promise<void> {
+  const loop = _botLoops.get(botId);
+  if (!loop) return;
+
+  let bot: Bot;
+  try {
+    bot = getBot(botId);
+  } catch {
+    stopBotLoop(botId);
+    return;
+  }
+
+  if (bot.status === "stopped" || bot.status === "paused") {
+    stopBotLoop(botId);
+    return;
+  }
+
+  if (loop.activeStories >= bot.maxConcurrentStories) return;
+
+  const board = getBoardByProject(bot.projectId);
+  if (!board) return;
+
+  const stories = getBotTodoStories(board.id, botId);
+  if (stories.length === 0) return;
+
+  const story = stories[0]!;
+  await pickAndExecuteStory(bot, board, story, deps, loop);
+}
+
+function getBotTodoStories(boardId: string, botId: string): Story[] {
   const db = getDb();
-  const allProjects = db.select().from(projects).all();
 
-  for (const project of allProjects) {
-    if (_activeStories >= deps.config.maxConcurrentStories) break;
+  const todoColumn = db
+    .select()
+    .from(kanbanColumns)
+    .where(and(eq(kanbanColumns.boardId, boardId), eq(kanbanColumns.name, "Todo")))
+    .get();
 
-    const board = getBoardByProject(project.id);
-    if (!board) continue;
+  if (!todoColumn) return [];
 
-    const stories = getAgentTodoStories(board.id);
-    if (stories.length === 0) continue;
-
-    const story = stories[0]!;
-    await pickAndExecuteStory(board, story, project.id, deps);
-  }
+  return db
+    .select()
+    .from(kanbanStories)
+    .where(
+      and(
+        eq(kanbanStories.columnId, todoColumn.id),
+        eq(kanbanStories.assigneeType, "bot"),
+        eq(kanbanStories.assignee, botId),
+      ),
+    )
+    .orderBy(asc(kanbanStories.priority), asc(kanbanStories.position))
+    .all() as Story[];
 }
 
 async function pickAndExecuteStory(
+  bot: Bot,
   board: Board,
   story: Story,
-  projectId: string,
   deps: AgentLoopDeps,
+  loop: BotLoop,
 ): Promise<void> {
-  _activeStories++;
+  loop.activeStories++;
+  updateBotStatus(bot.id, "working");
 
   try {
     const inProgressColumn = board.columns.find((c) => c.name === "In Progress");
@@ -90,7 +148,14 @@ async function pickAndExecuteStory(
       moveStory(story.id, inProgressColumn.id);
     }
 
-    logger.info({ storyId: story.id, title: story.title }, "Agent picked story");
+    logger.info({ botId: bot.id, storyId: story.id, title: story.title }, "Bot picked story");
+
+    writeJournalEntry({
+      botId: bot.id,
+      entryType: "task_started",
+      summary: `Started working on: ${story.title}`,
+      storyId: story.id,
+    });
 
     let instruction = story.title;
     if (story.description) {
@@ -102,9 +167,10 @@ async function pickAndExecuteStory(
 
     const message: InboundMessage = {
       id: generateId(),
-      channel: "agent",
-      userId: "agent",
-      projectId,
+      channel: "bot",
+      userId: bot.id,
+      botId: bot.id,
+      projectId: bot.projectId,
       instruction,
       timestamp: new Date(),
     };
@@ -112,11 +178,21 @@ async function pickAndExecuteStory(
     const jobId = await deps.submitMessage(message);
     updateStory(story.id, { jobId });
 
-    logger.info({ storyId: story.id, jobId }, "Story submitted as job");
+    logger.info({ botId: bot.id, storyId: story.id, jobId }, "Bot story submitted as job");
   } catch (err) {
-    logger.error({ storyId: story.id, err }, "Failed to execute story");
+    logger.error({ botId: bot.id, storyId: story.id, err }, "Bot failed to execute story");
+
+    writeJournalEntry({
+      botId: bot.id,
+      entryType: "task_failed",
+      summary: `Failed to start: ${story.title} — ${err instanceof Error ? err.message : String(err)}`,
+      storyId: story.id,
+    });
   } finally {
-    _activeStories--;
+    loop.activeStories--;
+    if (loop.activeStories === 0) {
+      updateBotStatus(bot.id, "idle");
+    }
   }
 }
 
@@ -124,6 +200,7 @@ export function onStoryJobCompleted(
   storyId: string,
   boardId: string,
   success: boolean,
+  botId?: string,
 ): void {
   try {
     const board = getBoard(boardId);
@@ -133,7 +210,16 @@ export function onStoryJobCompleted(
 
     if (targetColumn) {
       moveStory(storyId, targetColumn.id);
-      logger.info({ storyId, column: targetColumn.name, success }, "Story moved after job completion");
+      logger.info({ storyId, column: targetColumn.name, success, botId }, "Story moved after job completion");
+    }
+
+    if (botId) {
+      writeJournalEntry({
+        botId,
+        entryType: success ? "task_completed" : "task_failed",
+        summary: success ? `Completed story ${storyId}` : `Failed story ${storyId}`,
+        storyId,
+      });
     }
   } catch (err) {
     logger.error({ storyId, boardId, err }, "Failed to move story after job completion");

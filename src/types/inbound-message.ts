@@ -5,6 +5,7 @@ export interface InboundMessage {
   userId: string;
   userName?: string;
   projectId: string;
+  botId?: string;
   instruction: string;
   attachments?: Attachment[];
   metadata?: Record<string, unknown>;
@@ -21,7 +22,7 @@ export type ChannelType =
   | "github"
   | "email"
   | "kanban"
-  | "agent";
+  | "bot";
 
 export interface Attachment {
   filename: string;

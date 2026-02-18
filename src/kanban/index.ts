@@ -4,6 +4,7 @@ export {
   moveStory, updateStory, deleteStory, getAgentTodoStories, type Story, type CreateStoryInput,
 } from "./stories.js";
 export {
-  startAgentLoop, stopAgentLoop, isAgentLoopRunning, onStoryJobCompleted,
-  type AgentLoopConfig, type AgentLoopDeps,
+  startBotLoop, stopBotLoop, stopAllBotLoops, startAllBotLoops,
+  isBotLoopRunning, onStoryJobCompleted,
+  type AgentLoopDeps,
 } from "./agent-loop.js";

@@ -16,7 +16,7 @@ import { DiscordAdapter } from "./adapters/discord/client.js";
 import { GitHubWebhookAdapter } from "./adapters/github/webhook.js";
 import { EmailAdapter } from "./adapters/email/receiver.js";
 import { KanbanWebhookAdapter } from "./adapters/kanban/webhook.js";
-import { startAgentLoop, stopAgentLoop } from "./kanban/agent-loop.js";
+import { startAllBotLoops, stopAllBotLoops } from "./kanban/agent-loop.js";
 import { configureSandbox } from "./sandbox/manager.js";
 import { configureDevServer } from "./sandbox/dev-server.js";
 import { setWorkspaceBaseDir } from "./git/workspace.js";
@@ -83,18 +83,8 @@ async function main() {
     onTaskEvent: dispatchEvent,
   });
 
-  // 10. Start agent loop
-  if (config.agent.enabled) {
-    startAgentLoop({
-      submitMessage,
-      config: {
-        enabled: config.agent.enabled,
-        pollIntervalSeconds: config.agent.pollIntervalSeconds,
-        maxConcurrentStories: config.agent.maxConcurrentStories,
-        idleBehavior: config.agent.idleBehavior,
-      },
-    });
-  }
+  // 10. Start bot loops (each bot polls its own kanban stories)
+  startAllBotLoops({ submitMessage });
 
   // 11. Start HTTP server
   const address = await server.listen({
@@ -107,7 +97,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down...");
 
-    stopAgentLoop();
+    stopAllBotLoops();
     await closeWorker();
     await stopAllAdapters();
     await server.close();

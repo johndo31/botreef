@@ -10,6 +10,7 @@ import type { InboundMessage } from "../types/inbound-message.js";
 import type { JobPayload } from "../types/job.js";
 import type { AppConfig } from "../config/schema.js";
 import { logger } from "../util/logger.js";
+import { getBot } from "../bots/manager.js";
 
 export interface MessageRouterDeps {
   config: AppConfig;
@@ -78,7 +79,18 @@ export async function submitMessage(message: InboundMessage): Promise<string> {
     updatedAt: now,
   }).run();
 
-  // 5. Enqueue job
+  // 5. Resolve engine type (bot-specific overrides global)
+  let engineType: "claude-code" | "codex" = _config.engine.type;
+  if (message.botId) {
+    try {
+      const bot = getBot(message.botId);
+      engineType = bot.engineType as "claude-code" | "codex";
+    } catch {
+      // Bot may have been deleted — use global engine
+    }
+  }
+
+  // 6. Enqueue job
   const payload: JobPayload = {
     jobId,
     projectId: message.projectId,
@@ -92,7 +104,8 @@ export async function submitMessage(message: InboundMessage): Promise<string> {
     autoPush: projConf.autoPush,
     autoCreatePr: projConf.autoCreatePr,
     requireApproval: projConf.requireApproval,
-    engineType: _config.engine.type,
+    engineType,
+    botId: message.botId,
     metadata: message.metadata,
   };
 

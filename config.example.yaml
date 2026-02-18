@@ -74,9 +74,14 @@ interfaces:
 
 agent:
   enabled: true
-  pollIntervalSeconds: 30
-  maxConcurrentStories: 1
-  idleBehavior: wait     # "wait" or "discovery"
+  pollIntervalSeconds: 30          # Default for new bots
+  maxConcurrentStories: 1          # Default for new bots
+  idleBehavior: wait               # "wait" or "discovery"
+
+# Bots are created at runtime via the REST API or Web UI.
+# Each bot belongs to a project and has its own engine type, system prompt,
+# poll interval, and concurrency settings. Bots autonomously pick kanban
+# stories assigned to them and execute them as jobs.
 
 # Projects — define your repos here
 projects:

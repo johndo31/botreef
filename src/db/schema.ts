@@ -104,7 +104,7 @@ export const kanbanStories = sqliteTable("kanban_stories", {
   priority: integer("priority").notNull().default(0),
   storyPoints: integer("story_points"),
   assignee: text("assignee"),
-  assigneeType: text("assignee_type", { enum: ["user", "agent"] }).default("user"),
+  assigneeType: text("assignee_type", { enum: ["user", "bot"] }).default("user"),
   position: integer("position").notNull().default(0),
   jobId: text("job_id"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
@@ -121,4 +121,30 @@ export const devServers = sqliteTable("dev_servers", {
   status: text("status", { enum: ["starting", "running", "stopped", "failed"] }).notNull().default("starting"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
   stoppedAt: text("stopped_at"),
+});
+
+export const bots = sqliteTable("bots", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  projectId: text("project_id").notNull().references(() => projects.id),
+  engineType: text("engine_type", { enum: ["claude-code", "codex"] }).notNull().default("claude-code"),
+  model: text("model"),
+  systemPrompt: text("system_prompt"),
+  status: text("status", { enum: ["idle", "working", "paused", "stopped"] }).notNull().default("idle"),
+  pollIntervalSeconds: integer("poll_interval_seconds").notNull().default(30),
+  maxConcurrentStories: integer("max_concurrent_stories").notNull().default(1),
+  idleBehavior: text("idle_behavior", { enum: ["wait", "discovery"] }).notNull().default("wait"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const botJournal = sqliteTable("bot_journal", {
+  id: text("id").primaryKey(),
+  botId: text("bot_id").notNull().references(() => bots.id),
+  jobId: text("job_id").references(() => jobs.id),
+  entryType: text("entry_type", { enum: ["task_started", "task_completed", "task_failed", "observation", "decision", "learning"] }).notNull(),
+  summary: text("summary").notNull(),
+  details: text("details"),
+  storyId: text("story_id"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });

@@ -6,6 +6,9 @@ Botreef turns a server into an autonomous coding agent. It wraps Claude Code CLI
 
 ## Features
 
+- **Persistent bots** — Create named bots that live on your server, each with their own personality, engine config, and memory
+- **Autonomous kanban** — Bots pick stories from the built-in kanban board, execute them, and move cards through columns
+- **Bot memory** — Activity journal tracks what each bot has done, learned, and decided — injected into every future task as context
 - **Multi-channel input** — SSH, Telegram, Slack, Discord, email, GitHub webhooks, kanban boards, REST API, Web UI
 - **Autonomous coding** — AI reads your codebase, writes code, runs tests, commits, pushes, and creates PRs
 - **Secure by default** — gVisor sandboxing, per-project isolation, encrypted secrets, audit logging, firewall hardening
@@ -58,16 +61,52 @@ curl -X POST https://your-server/api/v1/tasks \
 └──────────┘           └──────────────┘           └──────────────┘
 ```
 
+## Bots
+
+Bots are first-class residents on Botreef. Each bot is a named entity with its own engine type, system prompt, concurrency settings, and activity journal. Bots autonomously poll the kanban board for stories assigned to them and execute them through the same pipeline as any channel.
+
+```bash
+# Create a bot via REST API
+curl -X POST https://your-server/api/v1/bots \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "name": "frontend-dev",
+    "projectId": "myapp",
+    "engineType": "claude-code",
+    "systemPrompt": "You are a frontend specialist. Use React and Tailwind.",
+    "pollIntervalSeconds": 30,
+    "maxConcurrentStories": 2
+  }'
+
+# Assign a kanban story to the bot
+curl -X POST https://your-server/api/v1/projects/myapp/stories \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{
+    "columnId": "todo-column-id",
+    "title": "Add dark mode toggle",
+    "assignee": "bot-id",
+    "assigneeType": "bot"
+  }'
+
+# The bot picks it up, executes it, commits, and moves the card to Review.
+
+# View what the bot has been doing
+curl https://your-server/api/v1/bots/bot-id/journal
+```
+
+Each bot maintains a **journal** — a log of tasks started, completed, failed, observations, decisions, and learnings. Recent journal entries are automatically injected into the instruction preamble for every future task, giving bots persistent memory across jobs without keeping containers alive.
+
 ## How It Works
 
-1. A message arrives from any channel (SSH, Telegram, webhook, etc.)
+1. A message arrives from any channel (SSH, Telegram, webhook, bot loop, etc.)
 2. The adapter normalizes it into a standard `InboundMessage`
-3. The router authenticates the user, resolves the target project, and enqueues a job
+3. The router authenticates the user/bot, resolves the target project, and enqueues a job
 4. The job processor creates an isolated sandbox container (Docker + gVisor)
-5. Claude Code CLI runs inside the sandbox against the cloned repo
-6. Changes are committed to a feature branch
-7. Optionally: human approval required before push
-8. Code is pushed, PR is created, and the user is notified on their channel
+5. If the job belongs to a bot, context (identity, system prompt, recent journal) is injected into the instruction
+6. Claude Code CLI runs inside the sandbox against the cloned repo
+7. Changes are committed to a feature branch; journal entries are written
+8. Optionally: human approval required before push
+9. Code is pushed, PR is created, and the user/bot is notified
 
 ## Supported Channels
 

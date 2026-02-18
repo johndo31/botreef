@@ -3,7 +3,7 @@ import { getDb } from "../db/client.js";
 import { users } from "../db/schema.js";
 import { ForbiddenError } from "../util/errors.js";
 
-export type Role = "admin" | "developer" | "viewer";
+export type Role = "admin" | "developer" | "viewer" | "bot";
 
 const PERMISSIONS: Record<Role, Set<string>> = {
   admin: new Set([
@@ -27,6 +27,11 @@ const PERMISSIONS: Record<Role, Set<string>> = {
     "task:read",
     "kanban:read",
     "preview:view",
+  ]),
+  bot: new Set([
+    "project:read",
+    "task:create", "task:read",
+    "kanban:read", "kanban:update",
   ]),
 };
 

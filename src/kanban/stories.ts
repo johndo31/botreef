@@ -31,7 +31,7 @@ export interface CreateStoryInput {
   priority?: number;
   storyPoints?: number;
   assignee?: string;
-  assigneeType?: "user" | "agent";
+  assigneeType?: "user" | "bot";
 }
 
 export function createStory(input: CreateStoryInput): Story {
@@ -119,7 +119,7 @@ export function updateStory(
 ): Story {
   const db = getDb();
   db.update(kanbanStories)
-    .set({ ...updates, assigneeType: updates.assigneeType as "user" | "agent" | undefined, updatedAt: new Date().toISOString() })
+    .set({ ...updates, assigneeType: updates.assigneeType as "user" | "bot" | undefined, updatedAt: new Date().toISOString() })
     .where(eq(kanbanStories.id, storyId))
     .run();
   return getStory(storyId);
@@ -148,7 +148,7 @@ export function getAgentTodoStories(boardId: string): Story[] {
     .where(
       and(
         eq(kanbanStories.columnId, todoColumn.id),
-        eq(kanbanStories.assigneeType, "agent"),
+        eq(kanbanStories.assigneeType, "bot"),
       ),
     )
     .orderBy(asc(kanbanStories.priority), asc(kanbanStories.position))

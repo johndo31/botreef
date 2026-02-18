@@ -9,6 +9,9 @@ import { createSandbox, destroySandbox, execInSandbox } from "../sandbox/manager
 import { selectEngine } from "../engine/factory.js";
 import { generateId } from "../util/id.js";
 import { logger } from "../util/logger.js";
+import { writeJournalEntry } from "../bots/journal.js";
+import { buildInstructionWithContext } from "../bots/context-builder.js";
+import { getBot } from "../bots/manager.js";
 
 export interface ProcessorCallbacks {
   onProgress: (progress: number) => void;
@@ -74,17 +77,39 @@ export async function processJob(
     containerId = await createSandbox(workspacePath);
     callbacks.onProgress(30);
 
+    // Step 3.5: Inject bot context if this is a bot job
+    let finalInstruction = payload.instruction;
+    if (payload.botId) {
+      try {
+        const bot = getBot(payload.botId);
+        finalInstruction = buildInstructionWithContext(bot, payload.instruction);
+      } catch {
+        // Bot may have been deleted — proceed with raw instruction
+      }
+    }
+
     // Step 4: Run AI engine in sandbox
     const engine = selectEngine(payload.engineType);
     const engineResult = await engine.run({
       containerId,
-      instruction: payload.instruction,
+      instruction: finalInstruction,
       workspacePath,
       onOutput: (output: string) => {
         emitEvent(payload, "task:output", { output }, callbacks);
       },
     });
     callbacks.onProgress(70);
+
+    // Write journal entry for bot
+    if (payload.botId) {
+      writeJournalEntry({
+        botId: payload.botId,
+        jobId: payload.jobId,
+        entryType: "task_completed",
+        summary: `Completed: ${payload.instruction.slice(0, 100)}`,
+        details: engineResult.output.slice(0, 2000),
+      });
+    }
 
     // Step 5: Commit changes
     emitEvent(payload, "task:progress", { status: "committing", progress: 70 }, callbacks);
@@ -147,6 +172,15 @@ export async function processJob(
     const error = err instanceof Error ? err.message : String(err);
     updateJobStatus(payload.jobId, "failed", { error, durationMs: Date.now() - startTime });
     emitEvent(payload, "task:failed", { error }, callbacks);
+
+    if (payload.botId) {
+      writeJournalEntry({
+        botId: payload.botId,
+        jobId: payload.jobId,
+        entryType: "task_failed",
+        summary: `Failed: ${payload.instruction.slice(0, 100)} — ${error}`,
+      });
+    }
 
     return {
       jobId: payload.jobId,

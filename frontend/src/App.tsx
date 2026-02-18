@@ -5,6 +5,7 @@ import KanbanPage from "./pages/KanbanPage";
 import ProjectPage from "./pages/ProjectPage";
 import TaskPage from "./pages/TaskPage";
 import SettingsPage from "./pages/SettingsPage";
+import { BotsPage } from "./pages/BotsPage";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/kanban/:projectId" element={<KanbanPage />} />
         <Route path="/projects/:projectId" element={<ProjectPage />} />
         <Route path="/tasks/:taskId" element={<TaskPage />} />
+        <Route path="/bots" element={<BotsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

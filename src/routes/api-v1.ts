@@ -109,7 +109,7 @@ export async function apiV1Routes(app: FastifyInstance): Promise<void> {
       priority?: number;
       storyPoints?: number;
       assignee?: string;
-      assigneeType?: "user" | "agent";
+      assigneeType?: "user" | "bot";
     };
   }>("/projects/:projectId/stories", async (request, reply) => {
     requirePermission(request.userRole!, "kanban:create");
@@ -131,7 +131,7 @@ export async function apiV1Routes(app: FastifyInstance): Promise<void> {
 
   app.patch<{
     Params: { storyId: string };
-    Body: { columnId?: string; title?: string; description?: string; priority?: number; assignee?: string; assigneeType?: "user" | "agent" };
+    Body: { columnId?: string; title?: string; description?: string; priority?: number; assignee?: string; assigneeType?: "user" | "bot" };
   }>("/stories/:storyId", async (request) => {
     requirePermission(request.userRole!, "kanban:update");
 
@@ -155,5 +155,131 @@ export async function apiV1Routes(app: FastifyInstance): Promise<void> {
     const { deleteStory } = await import("../kanban/stories.js");
     deleteStory(request.params.storyId);
     reply.status(204).send();
+  });
+
+  // === Bot endpoints ===
+
+  // List all bots
+  app.get("/bots", async (request) => {
+    requirePermission(request.userRole!, "project:read");
+
+    const { listBots } = await import("../bots/manager.js");
+    return { bots: listBots() };
+  });
+
+  // Get bot
+  app.get<{ Params: { botId: string } }>("/bots/:botId", async (request) => {
+    requirePermission(request.userRole!, "project:read");
+
+    const { getBot } = await import("../bots/manager.js");
+    try {
+      return getBot(request.params.botId);
+    } catch {
+      return { error: { code: "NOT_FOUND", message: "Bot not found" } };
+    }
+  });
+
+  // List bots for a project
+  app.get<{ Params: { projectId: string } }>("/projects/:projectId/bots", async (request) => {
+    requirePermission(request.userRole!, "project:read");
+
+    const { getBotsByProject } = await import("../bots/manager.js");
+    return { bots: getBotsByProject(request.params.projectId) };
+  });
+
+  // Create bot
+  app.post<{
+    Body: {
+      name: string;
+      projectId: string;
+      engineType?: "claude-code" | "codex";
+      model?: string;
+      systemPrompt?: string;
+      pollIntervalSeconds?: number;
+      maxConcurrentStories?: number;
+      idleBehavior?: "wait" | "discovery";
+    };
+  }>("/bots", async (request, reply) => {
+    requirePermission(request.userRole!, "project:update");
+
+    const { createBot } = await import("../bots/manager.js");
+    const bot = createBot(request.body);
+    reply.status(201).send(bot);
+  });
+
+  // Update bot
+  app.patch<{
+    Params: { botId: string };
+    Body: {
+      name?: string;
+      engineType?: "claude-code" | "codex";
+      model?: string;
+      systemPrompt?: string;
+      status?: "idle" | "working" | "paused" | "stopped";
+      pollIntervalSeconds?: number;
+      maxConcurrentStories?: number;
+      idleBehavior?: "wait" | "discovery";
+    };
+  }>("/bots/:botId", async (request) => {
+    requirePermission(request.userRole!, "project:update");
+
+    const { updateBot } = await import("../bots/manager.js");
+    return updateBot(request.params.botId, request.body);
+  });
+
+  // Delete bot
+  app.delete<{ Params: { botId: string } }>("/bots/:botId", async (request, reply) => {
+    requirePermission(request.userRole!, "project:delete");
+
+    const { deleteBot } = await import("../bots/manager.js");
+    const { stopBotLoop } = await import("../kanban/agent-loop.js");
+    stopBotLoop(request.params.botId);
+    deleteBot(request.params.botId);
+    reply.status(204).send();
+  });
+
+  // Start/stop bot loop
+  app.post<{
+    Params: { botId: string };
+    Body: { action: "start" | "stop" | "pause" };
+  }>("/bots/:botId/loop", async (request) => {
+    requirePermission(request.userRole!, "project:update");
+
+    const { getBot, updateBotStatus } = await import("../bots/manager.js");
+    const { startBotLoop, stopBotLoop, isBotLoopRunning } = await import("../kanban/agent-loop.js");
+    const { submitMessage } = await import("../router/message-router.js");
+
+    const bot = getBot(request.params.botId);
+    const { action } = request.body;
+
+    if (action === "start") {
+      updateBotStatus(bot.id, "idle");
+      startBotLoop(bot, { submitMessage });
+    } else if (action === "stop") {
+      updateBotStatus(bot.id, "stopped");
+      stopBotLoop(bot.id);
+    } else if (action === "pause") {
+      updateBotStatus(bot.id, "paused");
+      stopBotLoop(bot.id);
+    }
+
+    return { botId: bot.id, running: isBotLoopRunning(bot.id), status: bot.status };
+  });
+
+  // Get bot journal
+  app.get<{
+    Params: { botId: string };
+    Querystring: { limit?: number; type?: string };
+  }>("/bots/:botId/journal", async (request) => {
+    requirePermission(request.userRole!, "project:read");
+
+    const { getRecentJournal, getJournalByType } = await import("../bots/journal.js");
+    const limit = request.query.limit ?? 20;
+    const type = request.query.type as import("../bots/journal.js").JournalEntryType | undefined;
+
+    if (type) {
+      return { entries: getJournalByType(request.params.botId, type, limit) };
+    }
+    return { entries: getRecentJournal(request.params.botId, limit) };
   });
 }
