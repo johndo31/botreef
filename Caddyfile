@@ -1,0 +1,26 @@
+{
+	# Global options
+	admin off
+}
+
+# Main site — adjust domain as needed
+:80 {
+	# Reverse proxy to Botreef
+	reverse_proxy botreef:3000
+
+	# WebSocket support
+	@websocket {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	reverse_proxy @websocket botreef:3000
+
+	# Preview URL routing
+	# preview-{jobId}.yourdomain.com routes to the dev server container
+	@preview host preview-*.localhost
+	handle @preview {
+		reverse_proxy botreef:3000
+	}
+}
+
+# SSH is handled directly by the botreef container on port 2222

@@ -1,0 +1,89 @@
+# Botreef Configuration
+# Copy to config.yaml and customize
+
+server:
+  host: "0.0.0.0"
+  port: 3000
+  logLevel: info
+  maxConcurrentJobs: 2
+  # encryptionKey: "generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+  # jwtSecret: "generate with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+  baseUrl: "http://localhost:3000"
+
+database:
+  path: "./botreef.db"
+
+redis:
+  host: localhost
+  port: 6379
+  # password: "${REDIS_PASSWORD}"
+
+engine:
+  type: claude-code
+  defaultModel: claude-sonnet-4-20250514
+  maxTurns: 50
+  timeoutMinutes: 30
+  # apiKey: "${ANTHROPIC_API_KEY}"
+
+sandbox:
+  runtime: runc          # Use "runsc" for gVisor on Linux
+  image: botreef-sandbox:latest
+  memoryMb: 2048
+  cpus: 1
+  networkEnabled: false
+  workspaceDir: "./workspaces"
+
+interfaces:
+  rest:
+    enabled: true
+  web:
+    enabled: true
+    staticDir: "./frontend/dist"
+  ssh:
+    enabled: true
+    port: 2222
+    hostKeyPath: "./host.key"
+  telegram:
+    enabled: false
+    botToken: "${TELEGRAM_BOT_TOKEN}"
+    allowedChatIds: []
+  slack:
+    enabled: false
+    botToken: "${SLACK_BOT_TOKEN}"
+    signingSecret: "${SLACK_SIGNING_SECRET}"
+    appToken: "${SLACK_APP_TOKEN}"
+  discord:
+    enabled: false
+    botToken: "${DISCORD_BOT_TOKEN}"
+  github:
+    enabled: false
+    webhookSecret: "${GITHUB_WEBHOOK_SECRET}"
+  email:
+    enabled: false
+    smtpHost: smtp.gmail.com
+    smtpPort: 587
+    smtpUser: "${EMAIL_USER}"
+    smtpPass: "${EMAIL_PASS}"
+    imapHost: imap.gmail.com
+    imapPort: 993
+    imapUser: "${EMAIL_USER}"
+    imapPass: "${EMAIL_PASS}"
+    fromAddress: "botreef@yourdomain.com"
+  kanban:
+    enabled: false
+
+agent:
+  enabled: true
+  pollIntervalSeconds: 30
+  maxConcurrentStories: 1
+  idleBehavior: wait     # "wait" or "discovery"
+
+# Projects — define your repos here
+projects:
+  # my-app:
+  #   repoUrl: git@github.com:user/my-app.git
+  #   defaultBranch: main
+  #   branchStrategy: feature-per-job
+  #   autoPush: true
+  #   autoCreatePr: true
+  #   requireApproval: false

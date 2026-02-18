@@ -1,0 +1,51 @@
+services:
+  botreef:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+      - "2222:2222"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./workspaces:/app/workspaces
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=/app/data/botreef.db
+    depends_on:
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - botreef
+    restart: unless-stopped
+
+volumes:
+  valkey-data:
+  caddy-data:
+  caddy-config:
