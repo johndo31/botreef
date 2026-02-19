@@ -2,8 +2,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { users } from "../db/schema.js";
-import { encrypt, decrypt } from "../util/crypto.js";
-import { AuthError } from "../util/errors.js";
+import { encrypt } from "../util/crypto.js";
 
 const API_KEY_PREFIX = "br_";
 

@@ -13,7 +13,7 @@ export interface ResolvedIdentity {
 export async function resolveIdentity(
   channel: ChannelType,
   channelUserId: string,
-  channelUserName?: string,
+  _channelUserName?: string,
 ): Promise<ResolvedIdentity | null> {
   const db = getDb();
 

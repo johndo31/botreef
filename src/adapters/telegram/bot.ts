@@ -1,8 +1,8 @@
-import { Bot, type Context } from "grammy";
+import { Bot } from "grammy";
 import type { Adapter, AdapterConfig, AdapterDependencies, HealthStatus } from "../types.js";
 import type { TaskEvent } from "../../types/task-event.js";
 import { generateId } from "../../util/id.js";
-import type { InboundMessage } from "../../types/inbound-message.js";
+import type { InboundMessage, Attachment } from "../../types/inbound-message.js";
 import { logger } from "../../util/logger.js";
 
 interface TelegramConfig extends AdapterConfig {
@@ -51,13 +51,18 @@ export class TelegramAdapter implements Adapter {
     if (!chatId) return;
 
     switch (event.type) {
-      case "task:completed":
-        await this.bot.api.sendMessage(chatId,
-          `✅ *Task completed*${event.data.prUrl ? `\nPR: ${event.data.prUrl}` : ""}${event.data.commitSha ? `\nCommit: \`${event.data.commitSha.slice(0, 8)}\`` : ""}`,
-          { parse_mode: "Markdown" },
-        );
+      case "task:completed": {
+        let text = `✅ *Task completed*`;
+        if (event.data.prUrl) text += `\nPR: ${event.data.prUrl}`;
+        if (event.data.commitSha) text += `\nCommit: \`${event.data.commitSha.slice(0, 8)}\``;
+        if (event.data.costUsd != null) text += `\nCost: $${event.data.costUsd.toFixed(4)}`;
+        if (event.data.inputTokens != null && event.data.outputTokens != null) {
+          text += `\nTokens: ${event.data.inputTokens} in / ${event.data.outputTokens} out`;
+        }
+        await this.bot.api.sendMessage(chatId, text, { parse_mode: "Markdown" });
         this.chatJobMap.delete(event.jobId);
         break;
+      }
 
       case "task:failed":
         await this.bot.api.sendMessage(chatId,
@@ -85,6 +90,16 @@ export class TelegramAdapter implements Adapter {
     }
   }
 
+  private async downloadFile(fileId: string): Promise<{ data: Buffer; filename: string }> {
+    const file = await this.bot!.api.getFile(fileId);
+    const filePath = file.file_path!;
+    const url = `https://api.telegram.org/file/bot${this.config.botToken}/${filePath}`;
+    const response = await fetch(url);
+    const data = Buffer.from(await response.arrayBuffer());
+    const filename = filePath.split("/").pop() ?? `file_${fileId}`;
+    return { data, filename };
+  }
+
   private setupHandlers(): void {
     if (!this.bot) return;
 
@@ -97,13 +112,14 @@ export class TelegramAdapter implements Adapter {
         "/projects — List projects\n" +
         "/approve — Approve pending task\n" +
         "/reject — Reject pending task\n" +
-        "/help — Show this message",
+        "/help — Show this message\n\n" +
+        "You can also send photos or documents with a caption to include them as attachments.",
         { parse_mode: "Markdown" },
       );
     });
 
     this.bot.command("help", (ctx) => {
-      ctx.reply("Usage: /task <project> <instruction>\nExample: /task myapp Fix the login bug");
+      ctx.reply("Usage: /task <project> <instruction>\nExample: /task myapp Fix the login bug\n\nSend a photo/doc with caption: <project> <instruction>");
     });
 
     this.bot.command("task", async (ctx) => {
@@ -137,6 +153,107 @@ export class TelegramAdapter implements Adapter {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await ctx.reply(`❌ Error: ${msg}`);
+      }
+    });
+
+    // Handle photo messages
+    this.bot.on("message:photo", async (ctx) => {
+      const caption = ctx.message.caption ?? "";
+      const spaceIdx = caption.indexOf(" ");
+
+      let projectId: string;
+      let instruction: string;
+
+      if (spaceIdx === -1 && caption.length > 0) {
+        projectId = caption;
+        instruction = "Analyze this image";
+      } else if (spaceIdx > 0) {
+        projectId = caption.slice(0, spaceIdx);
+        instruction = caption.slice(spaceIdx + 1);
+      } else {
+        await ctx.reply("Send a photo with a caption: <project> <instruction>");
+        return;
+      }
+
+      try {
+        const photos = ctx.message.photo;
+        const largest = photos[photos.length - 1]!;
+        const { data, filename } = await this.downloadFile(largest.file_id);
+
+        const attachment: Attachment = {
+          filename,
+          contentType: "image/jpeg",
+          content: data,
+        };
+
+        const message: InboundMessage = {
+          id: generateId(),
+          channel: "telegram",
+          channelMessageId: String(ctx.message.message_id),
+          userId: String(ctx.from?.id),
+          userName: ctx.from?.username ?? ctx.from?.first_name,
+          projectId,
+          instruction,
+          attachments: [attachment],
+          timestamp: new Date(),
+        };
+
+        const jobId = await this.deps.submitMessage(message);
+        this.chatJobMap.set(jobId, ctx.chat.id);
+        await ctx.reply(`📋 Task created with image: \`${jobId}\``, { parse_mode: "Markdown" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await ctx.reply(`❌ ${msg}`);
+      }
+    });
+
+    // Handle document messages
+    this.bot.on("message:document", async (ctx) => {
+      const caption = ctx.message.caption ?? "";
+      const spaceIdx = caption.indexOf(" ");
+
+      let projectId: string;
+      let instruction: string;
+
+      if (spaceIdx === -1 && caption.length > 0) {
+        projectId = caption;
+        instruction = "Analyze this file";
+      } else if (spaceIdx > 0) {
+        projectId = caption.slice(0, spaceIdx);
+        instruction = caption.slice(spaceIdx + 1);
+      } else {
+        await ctx.reply("Send a document with a caption: <project> <instruction>");
+        return;
+      }
+
+      try {
+        const doc = ctx.message.document;
+        const { data, filename } = await this.downloadFile(doc.file_id);
+
+        const attachment: Attachment = {
+          filename: doc.file_name ?? filename,
+          contentType: doc.mime_type ?? "application/octet-stream",
+          content: data,
+        };
+
+        const message: InboundMessage = {
+          id: generateId(),
+          channel: "telegram",
+          channelMessageId: String(ctx.message.message_id),
+          userId: String(ctx.from?.id),
+          userName: ctx.from?.username ?? ctx.from?.first_name,
+          projectId,
+          instruction,
+          attachments: [attachment],
+          timestamp: new Date(),
+        };
+
+        const jobId = await this.deps.submitMessage(message);
+        this.chatJobMap.set(jobId, ctx.chat.id);
+        await ctx.reply(`📋 Task created with attachment: \`${jobId}\``, { parse_mode: "Markdown" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await ctx.reply(`❌ ${msg}`);
       }
     });
 

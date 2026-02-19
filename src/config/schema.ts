@@ -76,6 +76,12 @@ const engineConfigSchema = z.object({
   maxTurns: z.number().default(50),
   timeoutMinutes: z.number().default(30),
   apiKey: z.string().optional(),
+  defaultVerbosity: z.enum(["quiet", "normal", "verbose"]).default("normal"),
+});
+
+const schedulerConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  timezone: z.string().default("UTC"),
 });
 
 const sandboxConfigSchema = z.object({
@@ -128,6 +134,7 @@ export const configSchema = z.object({
   sandbox: sandboxConfigSchema.default({}),
   interfaces: interfacesConfigSchema.default({}),
   agent: agentConfigSchema.default({}),
+  scheduler: schedulerConfigSchema.default({}),
   projects: z.record(z.string(), projectConfigSchema).default({}),
 });
 
@@ -137,3 +144,4 @@ export type EngineConfig = z.infer<typeof engineConfigSchema>;
 export type SandboxConfig = z.infer<typeof sandboxConfigSchema>;
 export type ServerConfig = z.infer<typeof serverConfigSchema>;
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
+export type SchedulerConfig = z.infer<typeof schedulerConfigSchema>;

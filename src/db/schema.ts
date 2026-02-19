@@ -52,6 +52,9 @@ export const jobs = sqliteTable("jobs", {
   prUrl: text("pr_url"),
   previewUrl: text("preview_url"),
   durationMs: integer("duration_ms"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  costUsd: real("cost_usd"),
   storyId: text("story_id"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
@@ -107,6 +110,7 @@ export const kanbanStories = sqliteTable("kanban_stories", {
   assigneeType: text("assignee_type", { enum: ["user", "bot"] }).default("user"),
   position: integer("position").notNull().default(0),
   jobId: text("job_id"),
+  attachments: text("attachments"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
@@ -147,4 +151,18 @@ export const botJournal = sqliteTable("bot_journal", {
   details: text("details"),
   storyId: text("story_id"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const scheduledTasks = sqliteTable("scheduled_tasks", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id),
+  botId: text("bot_id").references(() => bots.id),
+  instruction: text("instruction").notNull(),
+  cronExpression: text("cron_expression").notNull(),
+  timezone: text("timezone").notNull().default("UTC"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  lastRunAt: text("last_run_at"),
+  nextRunAt: text("next_run_at"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
 });

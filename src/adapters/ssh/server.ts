@@ -1,4 +1,4 @@
-import { Server, type Connection, type Session } from "ssh2";
+import { Server, type Connection } from "ssh2";
 import { readFileSync, existsSync } from "node:fs";
 import type { Adapter, AdapterConfig, AdapterDependencies, HealthStatus } from "../types.js";
 import type { TaskEvent } from "../../types/task-event.js";

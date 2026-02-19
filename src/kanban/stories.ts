@@ -2,7 +2,7 @@ import { eq, and, asc } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { kanbanStories, kanbanColumns } from "../db/schema.js";
 import { generateId } from "../util/id.js";
-import { NotFoundError, ValidationError } from "../util/errors.js";
+import { NotFoundError } from "../util/errors.js";
 import { logger } from "../util/logger.js";
 
 export interface Story {
@@ -18,6 +18,7 @@ export interface Story {
   assigneeType?: string | null;
   position: number;
   jobId?: string | null;
+  attachments?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -32,6 +33,7 @@ export interface CreateStoryInput {
   storyPoints?: number;
   assignee?: string;
   assigneeType?: "user" | "bot";
+  attachments?: { filename: string; path: string }[];
 }
 
 export function createStory(input: CreateStoryInput): Story {
@@ -59,6 +61,7 @@ export function createStory(input: CreateStoryInput): Story {
     assignee: input.assignee,
     assigneeType: input.assigneeType ?? "user",
     position: maxPosition + 1,
+    attachments: input.attachments ? JSON.stringify(input.attachments) : undefined,
     createdAt: now,
     updatedAt: now,
   };

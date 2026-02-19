@@ -2,7 +2,7 @@ import { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder } 
 import type { Adapter, AdapterConfig, AdapterDependencies, HealthStatus } from "../types.js";
 import type { TaskEvent } from "../../types/task-event.js";
 import { generateId } from "../../util/id.js";
-import type { InboundMessage } from "../../types/inbound-message.js";
+import type { InboundMessage, Attachment } from "../../types/inbound-message.js";
 import { logger } from "../../util/logger.js";
 
 interface DiscordConfig extends AdapterConfig {
@@ -46,6 +46,22 @@ export class DiscordAdapter implements Adapter {
       if (interaction.commandName === "botreef") {
         const projectId = interaction.options.getString("project", true);
         const instruction = interaction.options.getString("instruction", true);
+        const fileAttachment = interaction.options.getAttachment("file");
+
+        const attachments: Attachment[] = [];
+        if (fileAttachment) {
+          try {
+            const response = await fetch(fileAttachment.url);
+            const data = Buffer.from(await response.arrayBuffer());
+            attachments.push({
+              filename: fileAttachment.name,
+              contentType: fileAttachment.contentType ?? "application/octet-stream",
+              content: data,
+            });
+          } catch (err) {
+            logger.warn({ err, url: fileAttachment.url }, "Failed to download Discord attachment");
+          }
+        }
 
         const message: InboundMessage = {
           id: generateId(),
@@ -55,6 +71,7 @@ export class DiscordAdapter implements Adapter {
           userName: interaction.user.username,
           projectId,
           instruction,
+          attachments: attachments.length > 0 ? attachments : undefined,
           timestamp: new Date(),
         };
 
@@ -63,7 +80,8 @@ export class DiscordAdapter implements Adapter {
         try {
           const jobId = await this.deps.submitMessage(message);
           this.channelJobMap.set(jobId, interaction.channelId);
-          await interaction.editReply(`📋 Task created: \`${jobId}\``);
+          const suffix = attachments.length > 0 ? ` (with ${attachments.length} attachment)` : "";
+          await interaction.editReply(`📋 Task created: \`${jobId}\`${suffix}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           await interaction.editReply(`❌ Error: ${msg}`);
@@ -96,19 +114,27 @@ export class DiscordAdapter implements Adapter {
     if (!channel?.isTextBased() || !("send" in channel)) return;
 
     switch (event.type) {
-      case "task:completed":
+      case "task:completed": {
+        const fields = [
+          ...(event.data.prUrl ? [{ name: "Pull Request", value: event.data.prUrl }] : []),
+          ...(event.data.commitSha ? [{ name: "Commit", value: `\`${event.data.commitSha.slice(0, 8)}\`` }] : []),
+        ];
+        if (event.data.costUsd != null) {
+          fields.push({ name: "Cost", value: `$${event.data.costUsd.toFixed(4)}` });
+        }
+        if (event.data.inputTokens != null && event.data.outputTokens != null) {
+          fields.push({ name: "Tokens", value: `${event.data.inputTokens} in / ${event.data.outputTokens} out` });
+        }
         await channel.send({
           embeds: [{
             title: "✅ Task Completed",
             color: 0x00ff00,
-            fields: [
-              ...(event.data.prUrl ? [{ name: "Pull Request", value: event.data.prUrl }] : []),
-              ...(event.data.commitSha ? [{ name: "Commit", value: `\`${event.data.commitSha.slice(0, 8)}\`` }] : []),
-            ],
+            fields,
           }],
         });
         this.channelJobMap.delete(event.jobId);
         break;
+      }
 
       case "task:failed":
         await channel.send({
@@ -143,6 +169,9 @@ export class DiscordAdapter implements Adapter {
       )
       .addStringOption((opt) =>
         opt.setName("instruction").setDescription("What to do").setRequired(true),
+      )
+      .addAttachmentOption((opt) =>
+        opt.setName("file").setDescription("Optional file attachment (image, PDF, etc.)").setRequired(false),
       );
 
     try {

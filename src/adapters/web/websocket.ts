@@ -4,7 +4,7 @@ import type { WebSocket } from "@fastify/websocket";
 import { onTaskEvent } from "../../router/event-dispatcher.js";
 import { logger } from "../../util/logger.js";
 import { generateId } from "../../util/id.js";
-import type { InboundMessage } from "../../types/inbound-message.js";
+import type { InboundMessage, Attachment } from "../../types/inbound-message.js";
 
 interface WebSocketClient {
   ws: WebSocket;
@@ -18,7 +18,7 @@ export class WebAdapter implements Adapter {
   private clients = new Map<string, WebSocketClient>();
   private unsubscribe?: () => void;
 
-  async init(config: AdapterConfig, deps: AdapterDependencies): Promise<void> {
+  async init(_config: AdapterConfig, deps: AdapterDependencies): Promise<void> {
     this.deps = deps;
   }
 
@@ -89,12 +89,29 @@ export class WebAdapter implements Adapter {
         break;
 
       case "submit": {
+        // Parse base64-encoded attachments if present
+        let attachments: Attachment[] | undefined;
+        if (Array.isArray(msg.attachments)) {
+          attachments = [];
+          for (const att of msg.attachments as Array<{ filename?: string; contentType?: string; data?: string }>) {
+            if (att.data && att.filename) {
+              attachments.push({
+                filename: att.filename,
+                contentType: att.contentType ?? "application/octet-stream",
+                content: Buffer.from(att.data, "base64"),
+              });
+            }
+          }
+          if (attachments.length === 0) attachments = undefined;
+        }
+
         const message: InboundMessage = {
           id: generateId(),
           channel: "web",
           userId: (msg.userId as string) ?? clientId,
           projectId: msg.projectId as string,
           instruction: msg.instruction as string,
+          attachments,
           timestamp: new Date(),
         };
         this.deps.submitMessage(message)

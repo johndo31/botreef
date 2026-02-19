@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
+import multipart from "@fastify/multipart";
 import { healthRoutes } from "./routes/health.js";
 import { apiV1Routes } from "./routes/api-v1.js";
 import { authPlugin } from "./plugins/auth.js";
@@ -18,6 +19,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     credentials: true,
   });
   await app.register(websocket);
+  await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } });
   await app.register(authPlugin);
 
   // Routes

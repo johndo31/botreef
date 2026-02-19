@@ -1,3 +1,5 @@
+export type Verbosity = "quiet" | "normal" | "verbose";
+
 export interface InboundMessage {
   id: string;
   channel: ChannelType;
@@ -7,6 +9,7 @@ export interface InboundMessage {
   projectId: string;
   botId?: string;
   instruction: string;
+  verbosity?: Verbosity;
   attachments?: Attachment[];
   metadata?: Record<string, unknown>;
   timestamp: Date;

@@ -7,16 +7,21 @@ export class CodexEngine implements Engine {
 
   async run(options: EngineRunOptions): Promise<EngineResult> {
     const startTime = Date.now();
+    const verbosity = options.verbosity ?? "normal";
 
     const command = [
       "codex",
-      "--quiet",
       "--approval-mode", "full-auto",
-      options.instruction,
     ];
 
+    if (verbosity !== "verbose") {
+      command.push("--quiet");
+    }
+
+    command.push(options.instruction);
+
     logger.info(
-      { sandboxId: options.sandboxId },
+      { sandboxId: options.sandboxId, verbosity },
       "Running Codex engine",
     );
 

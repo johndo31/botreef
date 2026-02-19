@@ -30,7 +30,7 @@ export class KanbanWebhookAdapter implements Adapter {
     return { healthy: true, name: this.name };
   }
 
-  async sendEvent(event: TaskEvent): Promise<void> {
+  async sendEvent(_event: TaskEvent): Promise<void> {
     // External kanban boards are update-only via their APIs if needed
   }
 
@@ -54,8 +54,8 @@ export class KanbanWebhookAdapter implements Adapter {
   }
 
   private parseWebhook(payload: Record<string, unknown>): InboundMessage | null {
-    // Generic webhook parsing — specific providers need custom logic
-    const action = payload.action as string;
+    if (this.config.secret && payload.secret !== this.config.secret) return null;
+
     const card = payload.card as Record<string, unknown> | undefined;
 
     if (!card) return null;

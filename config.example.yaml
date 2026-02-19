@@ -23,6 +23,7 @@ engine:
   defaultModel: claude-sonnet-4-20250514
   maxTurns: 50
   timeoutMinutes: 30
+  defaultVerbosity: normal              # "quiet", "normal", or "verbose"
   # apiKey: "${ANTHROPIC_API_KEY}"
 
 sandbox:
@@ -73,6 +74,10 @@ agent:
   pollIntervalSeconds: 30          # Default for new bots
   maxConcurrentStories: 1          # Default for new bots
   idleBehavior: wait               # "wait" or "discovery"
+
+scheduler:
+  enabled: false                   # Enable cron-scheduled tasks
+  timezone: "UTC"                  # Default timezone for cron expressions
 
 # Bots are created at runtime via the REST API or Web UI.
 # Each bot belongs to a project and has its own engine type, system prompt,

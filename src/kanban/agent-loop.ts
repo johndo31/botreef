@@ -4,11 +4,12 @@ import { kanbanColumns, kanbanStories } from "../db/schema.js";
 import { getBoardByProject, getBoard, type Board } from "./board.js";
 import { moveStory, updateStory, type Story } from "./stories.js";
 import { generateId } from "../util/id.js";
-import type { InboundMessage } from "../types/inbound-message.js";
+import type { InboundMessage, Attachment } from "../types/inbound-message.js";
 import { logger } from "../util/logger.js";
 import type { Bot } from "../bots/manager.js";
 import { getBot, updateBotStatus, listBots } from "../bots/manager.js";
 import { writeJournalEntry } from "../bots/journal.js";
+import * as fs from "node:fs";
 
 export interface AgentLoopDeps {
   submitMessage: (message: InboundMessage) => Promise<string>;
@@ -165,6 +166,27 @@ async function pickAndExecuteStory(
       instruction += `\n\nAcceptance Criteria:\n${story.acceptanceCriteria}`;
     }
 
+    // Parse story attachments if present
+    let attachments: Attachment[] | undefined;
+    if (story.attachments) {
+      try {
+        const parsed = JSON.parse(story.attachments) as Array<{ filename: string; path: string }>;
+        attachments = [];
+        for (const att of parsed) {
+          if (fs.existsSync(att.path)) {
+            attachments.push({
+              filename: att.filename,
+              contentType: "application/octet-stream",
+              content: fs.readFileSync(att.path),
+            });
+          }
+        }
+        if (attachments.length === 0) attachments = undefined;
+      } catch {
+        // Invalid JSON — ignore attachments
+      }
+    }
+
     const message: InboundMessage = {
       id: generateId(),
       channel: "bot",
@@ -172,6 +194,7 @@ async function pickAndExecuteStory(
       botId: bot.id,
       projectId: bot.projectId,
       instruction,
+      attachments,
       timestamp: new Date(),
     };
 

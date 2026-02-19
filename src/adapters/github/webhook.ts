@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Adapter, AdapterConfig, AdapterDependencies, HealthStatus } from "../types.js";
 import type { TaskEvent } from "../../types/task-event.js";
-import { parseGitHubEvent, type ParsedGitHubEvent } from "./parser.js";
+import { parseGitHubEvent } from "./parser.js";
 import { generateId } from "../../util/id.js";
 import type { InboundMessage } from "../../types/inbound-message.js";
 import { logger } from "../../util/logger.js";
@@ -31,7 +31,7 @@ export class GitHubWebhookAdapter implements Adapter {
     return { healthy: true, name: this.name };
   }
 
-  async sendEvent(event: TaskEvent): Promise<void> {
+  async sendEvent(_event: TaskEvent): Promise<void> {
     // GitHub notifications are handled via PR comments by the git/pr module
   }
 

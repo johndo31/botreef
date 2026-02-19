@@ -8,7 +8,7 @@ export class RestAdapter implements Adapter {
   name = "rest";
   private deps!: AdapterDependencies;
 
-  async init(config: AdapterConfig, deps: AdapterDependencies): Promise<void> {
+  async init(_config: AdapterConfig, deps: AdapterDependencies): Promise<void> {
     this.deps = deps;
   }
 
@@ -24,7 +24,7 @@ export class RestAdapter implements Adapter {
     return { healthy: true, name: this.name };
   }
 
-  async sendEvent(event: TaskEvent): Promise<void> {
+  async sendEvent(_event: TaskEvent): Promise<void> {
     // REST responses are handled via SSE/polling, not push
   }
 }

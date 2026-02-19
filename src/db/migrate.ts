@@ -19,6 +19,7 @@ export function runMigrations() {
     { name: "dev_servers", def: schema.devServers },
     { name: "bots", def: schema.bots },
     { name: "bot_journal", def: schema.botJournal },
+    { name: "scheduled_tasks", def: schema.scheduledTasks },
   ];
 
   for (const table of tables) {
@@ -181,6 +182,26 @@ function createTablesIfNotExist(db: ReturnType<typeof getDb>) {
     created_at TEXT NOT NULL
   )`);
 
+  db.run(sql`CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    bot_id TEXT REFERENCES bots(id),
+    instruction TEXT NOT NULL,
+    cron_expression TEXT NOT NULL,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run_at TEXT,
+    next_run_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`);
+
+  // Idempotent ALTER TABLE migrations for new columns
+  try { db.run(sql`ALTER TABLE jobs ADD COLUMN input_tokens INTEGER`); } catch {}
+  try { db.run(sql`ALTER TABLE jobs ADD COLUMN output_tokens INTEGER`); } catch {}
+  try { db.run(sql`ALTER TABLE jobs ADD COLUMN cost_usd REAL`); } catch {}
+  try { db.run(sql`ALTER TABLE kanban_stories ADD COLUMN attachments TEXT`); } catch {}
+
   // Create indexes
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_jobs_project_id ON jobs(project_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)`);
@@ -192,4 +213,5 @@ function createTablesIfNotExist(db: ReturnType<typeof getDb>) {
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_bots_status ON bots(status)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_bot_journal_bot ON bot_journal(bot_id)`);
   db.run(sql`CREATE INDEX IF NOT EXISTS idx_bot_journal_job ON bot_journal(job_id)`);
+  db.run(sql`CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_enabled ON scheduled_tasks(enabled)`);
 }

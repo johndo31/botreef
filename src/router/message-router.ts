@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { jobs, projects } from "../db/schema.js";
@@ -5,7 +7,7 @@ import { resolveIdentity, createUserWithIdentity } from "../auth/identity.js";
 import { requirePermission, getUserRole } from "../auth/rbac.js";
 import { enqueueJob } from "../queue/producer.js";
 import { generateId } from "../util/id.js";
-import { NotFoundError, AuthError } from "../util/errors.js";
+import { NotFoundError } from "../util/errors.js";
 import type { InboundMessage } from "../types/inbound-message.js";
 import type { JobPayload } from "../types/job.js";
 import type { AppConfig } from "../config/schema.js";
@@ -90,6 +92,22 @@ export async function submitMessage(message: InboundMessage): Promise<string> {
     }
   }
 
+  // 5b. Write attachments to disk
+  let attachmentPaths: string[] | undefined;
+  if (message.attachments && message.attachments.length > 0) {
+    const attachDir = path.join(_config.sandbox.workspaceDir, ".attachments", jobId);
+    fs.mkdirSync(attachDir, { recursive: true });
+
+    attachmentPaths = [];
+    for (const att of message.attachments) {
+      const filePath = path.join(attachDir, att.filename);
+      const data = typeof att.content === "string" ? Buffer.from(att.content, "base64") : att.content;
+      fs.writeFileSync(filePath, data);
+      attachmentPaths.push(filePath);
+    }
+    logger.info({ jobId, count: attachmentPaths.length }, "Attachments written to disk");
+  }
+
   // 6. Enqueue job
   const payload: JobPayload = {
     jobId,
@@ -106,6 +124,8 @@ export async function submitMessage(message: InboundMessage): Promise<string> {
     requireApproval: projConf.requireApproval,
     engineType,
     botId: message.botId,
+    verbosity: message.verbosity ?? _config.engine.defaultVerbosity,
+    attachmentPaths,
     metadata: message.metadata,
   };
 

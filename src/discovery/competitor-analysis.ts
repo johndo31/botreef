@@ -1,4 +1,4 @@
-import { conductWebResearch, type ResearchResult } from "./web-research.js";
+import { conductWebResearch } from "./web-research.js";
 import { logger } from "../util/logger.js";
 
 export interface CompetitorProfile {

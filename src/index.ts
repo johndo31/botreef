@@ -17,6 +17,7 @@ import { GitHubWebhookAdapter } from "./adapters/github/webhook.js";
 import { EmailAdapter } from "./adapters/email/receiver.js";
 import { KanbanWebhookAdapter } from "./adapters/kanban/webhook.js";
 import { startAllBotLoops, stopAllBotLoops } from "./kanban/agent-loop.js";
+import { startScheduler, stopScheduler } from "./scheduler/runner.js";
 import { configureSandbox } from "./sandbox/manager.js";
 import { configureDevServer } from "./sandbox/dev-server.js";
 import { setWorkspaceBaseDir } from "./git/workspace.js";
@@ -83,6 +84,9 @@ async function main() {
   // 10. Start bot loops (each bot polls its own kanban stories)
   startAllBotLoops({ submitMessage });
 
+  // 10.5. Start cron scheduler
+  startScheduler({ submitMessage, config });
+
   // 11. Start HTTP server
   const address = await server.listen({
     host: config.server.host,
@@ -94,6 +98,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutting down...");
 
+    stopScheduler();
     stopAllBotLoops();
     await closeWorker();
     await stopAllAdapters();

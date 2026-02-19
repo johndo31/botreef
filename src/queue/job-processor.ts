@@ -5,9 +5,8 @@ import { getDb } from "../db/client.js";
 import { jobs } from "../db/schema.js";
 import { cloneOrPull, createBranch, commitAndPush, getWorkspacePath } from "../git/manager.js";
 import { createPullRequest } from "../git/pr.js";
-import { createSandbox, destroySandbox, execInSandbox } from "../sandbox/manager.js";
+import { createSandbox, destroySandbox } from "../sandbox/manager.js";
 import { selectEngine } from "../engine/factory.js";
-import { generateId } from "../util/id.js";
 import { logger } from "../util/logger.js";
 import { writeJournalEntry } from "../bots/journal.js";
 import { buildInstructionWithContext } from "../bots/context-builder.js";
@@ -88,17 +87,30 @@ export async function processJob(
       }
     }
 
+    // Resolve verbosity
+    const verbosity = payload.verbosity ?? "normal";
+
     // Step 4: Run AI engine in sandbox
     const engine = selectEngine(payload.engineType);
     const engineResult = await engine.run({
       sandboxId,
       instruction: finalInstruction,
       workspacePath,
+      verbosity,
+      attachmentPaths: payload.attachmentPaths,
       onOutput: (output: string) => {
-        emitEvent(payload, "task:output", { output }, callbacks);
+        if (verbosity !== "quiet") {
+          emitEvent(payload, "task:output", { output }, callbacks);
+        }
       },
     });
     callbacks.onProgress(70);
+
+    // Save cost data to DB
+    const costExtra: Record<string, unknown> = {};
+    if (engineResult.inputTokens != null) costExtra.inputTokens = engineResult.inputTokens;
+    if (engineResult.outputTokens != null) costExtra.outputTokens = engineResult.outputTokens;
+    if (engineResult.costUsd != null) costExtra.costUsd = engineResult.costUsd;
 
     // Write journal entry for bot
     if (payload.botId) {
@@ -144,6 +156,7 @@ export async function processJob(
         commitSha,
         prUrl,
         output: engineResult.output,
+        ...costExtra,
       });
       emitEvent(payload, "task:approval_required", { branch, commitSha, prUrl }, callbacks);
     } else {
@@ -153,11 +166,19 @@ export async function processJob(
         prUrl,
         output: engineResult.output,
         durationMs: Date.now() - startTime,
+        ...costExtra,
       });
     }
 
     callbacks.onProgress(100);
-    emitEvent(payload, "task:completed", { branch, commitSha, prUrl }, callbacks);
+    emitEvent(payload, "task:completed", {
+      branch,
+      commitSha,
+      prUrl,
+      inputTokens: engineResult.inputTokens,
+      outputTokens: engineResult.outputTokens,
+      costUsd: engineResult.costUsd,
+    }, callbacks);
 
     return {
       jobId: payload.jobId,
@@ -167,6 +188,9 @@ export async function processJob(
       commitSha,
       prUrl,
       durationMs: Date.now() - startTime,
+      inputTokens: engineResult.inputTokens,
+      outputTokens: engineResult.outputTokens,
+      costUsd: engineResult.costUsd,
     };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);

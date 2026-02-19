@@ -27,4 +27,7 @@ export interface TaskEventData {
   prUrl?: string;
   commitSha?: string;
   previewUrl?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
 }

@@ -5,25 +5,59 @@ import { jobs, projects } from "../db/schema.js";
 import { submitMessage } from "../router/message-router.js";
 import { generateId } from "../util/id.js";
 import { requirePermission } from "../auth/rbac.js";
-import type { InboundMessage } from "../types/inbound-message.js";
+import type { InboundMessage, Attachment } from "../types/inbound-message.js";
 
 export async function apiV1Routes(app: FastifyInstance): Promise<void> {
   // All routes require authentication
   app.addHook("preHandler", (app as any).authenticate);
 
-  // Create task
-  app.post<{
-    Body: { projectId: string; instruction: string; metadata?: Record<string, unknown> };
-  }>("/tasks", async (request, reply) => {
+  // Create task (supports JSON body or multipart/form-data with file uploads)
+  app.post("/tasks", async (request, reply) => {
     requirePermission(request.userRole!, "task:create");
 
-    const { projectId, instruction, metadata } = request.body;
+    let projectId: string;
+    let instruction: string;
+    let metadata: Record<string, unknown> | undefined;
+    let verbosity: string | undefined;
+    const attachments: Attachment[] = [];
+
+    if (request.isMultipart()) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === "file") {
+          const buf = await part.toBuffer();
+          attachments.push({
+            filename: part.filename,
+            contentType: part.mimetype,
+            content: buf,
+          });
+        } else {
+          // field
+          const value = part.value as string;
+          if (part.fieldname === "projectId") projectId = value;
+          else if (part.fieldname === "instruction") instruction = value;
+          else if (part.fieldname === "verbosity") verbosity = value;
+          else if (part.fieldname === "metadata") {
+            try { metadata = JSON.parse(value); } catch {}
+          }
+        }
+      }
+    } else {
+      const body = request.body as { projectId: string; instruction: string; metadata?: Record<string, unknown>; verbosity?: string };
+      projectId = body.projectId;
+      instruction = body.instruction;
+      metadata = body.metadata;
+      verbosity = body.verbosity;
+    }
+
     const message: InboundMessage = {
       id: generateId(),
       channel: "rest",
       userId: request.userId!,
-      projectId,
-      instruction,
+      projectId: projectId!,
+      instruction: instruction!,
+      verbosity: verbosity as InboundMessage["verbosity"],
+      attachments: attachments.length > 0 ? attachments : undefined,
       metadata,
       timestamp: new Date(),
     };
@@ -281,5 +315,65 @@ export async function apiV1Routes(app: FastifyInstance): Promise<void> {
       return { entries: getJournalByType(request.params.botId, type, limit) };
     }
     return { entries: getRecentJournal(request.params.botId, limit) };
+  });
+
+  // === Scheduled Tasks endpoints ===
+
+  app.post<{
+    Body: {
+      projectId: string;
+      instruction: string;
+      cronExpression: string;
+      timezone?: string;
+      botId?: string;
+    };
+  }>("/scheduled-tasks", async (request, reply) => {
+    requirePermission(request.userRole!, "task:create");
+
+    const { addScheduledTask } = await import("../scheduler/runner.js");
+    const task = addScheduledTask(request.body);
+    reply.status(201).send(task);
+  });
+
+  app.get("/scheduled-tasks", async (request) => {
+    requirePermission(request.userRole!, "task:read");
+
+    const { listScheduledTasks } = await import("../scheduler/runner.js");
+    return { tasks: listScheduledTasks() };
+  });
+
+  app.get<{ Params: { id: string } }>("/scheduled-tasks/:id", async (request) => {
+    requirePermission(request.userRole!, "task:read");
+
+    const { getScheduledTask } = await import("../scheduler/runner.js");
+    const task = getScheduledTask(request.params.id);
+    if (!task) {
+      return { error: { code: "NOT_FOUND", message: "Scheduled task not found" } };
+    }
+    return task;
+  });
+
+  app.patch<{
+    Params: { id: string };
+    Body: {
+      instruction?: string;
+      cronExpression?: string;
+      timezone?: string;
+      enabled?: boolean;
+      botId?: string;
+    };
+  }>("/scheduled-tasks/:id", async (request) => {
+    requirePermission(request.userRole!, "task:create");
+
+    const { updateScheduledTask } = await import("../scheduler/runner.js");
+    return updateScheduledTask(request.params.id, request.body);
+  });
+
+  app.delete<{ Params: { id: string } }>("/scheduled-tasks/:id", async (request, reply) => {
+    requirePermission(request.userRole!, "task:create");
+
+    const { removeScheduledTask } = await import("../scheduler/runner.js");
+    removeScheduledTask(request.params.id);
+    reply.status(204).send();
   });
 }

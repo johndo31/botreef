@@ -1,7 +1,5 @@
 import type { Adapter, AdapterConfig, AdapterDependencies, HealthStatus } from "../types.js";
 import type { TaskEvent } from "../../types/task-event.js";
-import { generateId } from "../../util/id.js";
-import type { InboundMessage } from "../../types/inbound-message.js";
 import { sendEmail } from "./sender.js";
 import { logger } from "../../util/logger.js";
 
@@ -19,14 +17,12 @@ interface EmailConfig extends AdapterConfig {
 
 export class EmailAdapter implements Adapter {
   name = "email";
-  private deps!: AdapterDependencies;
   private config!: EmailConfig;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private emailJobMap = new Map<string, string>();
 
-  async init(config: AdapterConfig, deps: AdapterDependencies): Promise<void> {
+  async init(config: AdapterConfig, _deps: AdapterDependencies): Promise<void> {
     this.config = config as EmailConfig;
-    this.deps = deps;
   }
 
   async start(): Promise<void> {

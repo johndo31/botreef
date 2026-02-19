@@ -1,3 +1,5 @@
+import type { Verbosity } from "./inbound-message.js";
+
 export interface JobPayload {
   jobId: string;
   projectId: string;
@@ -13,6 +15,8 @@ export interface JobPayload {
   requireApproval: boolean;
   engineType: string;
   botId?: string;
+  verbosity?: Verbosity;
+  attachmentPaths?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -38,4 +42,7 @@ export interface JobResult {
   previewUrl?: string;
   error?: string;
   durationMs: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
 }
