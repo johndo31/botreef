@@ -19,11 +19,7 @@ Botreef turns a server into an autonomous coding agent. It wraps Claude Code CLI
 ## Quick Start
 
 ```bash
-# On a fresh Ubuntu VPS:
-curl -sSL https://get.botreef.dev | bash
-
-# Or manually:
-git clone https://github.com/botreef/botreef.git
+git clone https://github.com/johndo31/botreef.git
 cd botreef
 cp config.example.yaml config.yaml   # add your API key
 docker compose up -d
@@ -223,12 +219,31 @@ interface Adapter {
 
 See `src/adapters/` for examples.
 
+## Running Locally
+
+Botreef runs fine on a local machine for development. You need:
+
+- **Node.js 22+** and npm
+- **Docker** (for sandbox containers)
+- **Valkey or Redis** (for the job queue) — or just `docker compose up valkey`
+
+```bash
+git clone https://github.com/johndo31/botreef.git
+cd botreef
+npm install
+cp config.example.yaml config.yaml   # edit with your API key
+npm run dev
+```
+
+Notes:
+- gVisor (`runsc`) is Linux-only — on macOS/Windows, sandboxes use standard Docker isolation (`runc`), which is fine for local use
+- Sandbox containers have network disabled by default (`networkEnabled: false`)
+- SQLite database is a single file (`./botreef.db`), no setup needed
+- All messaging adapters (Telegram, Slack, etc.) are disabled by default — only REST, Web UI, and SSH start
+
 ## Development
 
 ```bash
-git clone https://github.com/botreef/botreef.git
-cd botreef
-npm install
 npm run dev        # Start in dev mode with hot reload
 npm test           # Run tests
 npm run lint       # Lint
