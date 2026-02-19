@@ -19,19 +19,19 @@ export class ClaudeCodeEngine implements Engine {
     ];
 
     logger.info(
-      { containerId: options.containerId, model, maxTurns },
+      { sandboxId: options.sandboxId, model, maxTurns },
       "Running Claude Code engine",
     );
 
     const result = await execInSandbox(
-      options.containerId,
+      options.sandboxId,
       command,
       options.onOutput,
     );
 
     const durationMs = Date.now() - startTime;
     logger.info(
-      { containerId: options.containerId, exitCode: result.exitCode, durationMs },
+      { sandboxId: options.sandboxId, exitCode: result.exitCode, durationMs },
       "Claude Code engine completed",
     );
 

@@ -1,14 +1,15 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { devServers } from "../db/schema.js";
-import { execInSandbox } from "./manager.js";
+import { getSandboxWorkspace } from "./manager.js";
 import { generateId } from "../util/id.js";
 import { logger } from "../util/logger.js";
 
 export interface DevServerInfo {
   id: string;
-  containerId: string;
+  sandboxId: string;
   port: number;
   previewUrl: string;
   authToken: string;
@@ -17,13 +18,15 @@ export interface DevServerInfo {
 let _nextPort = 10000;
 let _baseUrl = "http://localhost:3000";
 
+const _processes = new Map<string, ChildProcess>();
+
 export function configureDevServer(baseUrl: string): void {
   _baseUrl = baseUrl;
 }
 
 export async function startDevServer(
   jobId: string,
-  containerId: string,
+  sandboxId: string,
   command = "npm run dev",
 ): Promise<DevServerInfo> {
   const port = _nextPort++;
@@ -31,11 +34,13 @@ export async function startDevServer(
   const id = generateId();
   const previewUrl = `${_baseUrl}/preview/${jobId}?token=${authToken}`;
 
+  const workspacePath = getSandboxWorkspace(sandboxId);
+
   const db = getDb();
   db.insert(devServers).values({
     id,
     jobId,
-    containerId,
+    sandboxId,
     port,
     previewUrl,
     authToken,
@@ -43,16 +48,37 @@ export async function startDevServer(
     createdAt: new Date().toISOString(),
   }).run();
 
-  // Start dev server in background (non-blocking exec)
-  execInSandbox(containerId, ["sh", "-c", command], (output) => {
-    logger.debug({ jobId, output: output.slice(0, 200) }, "Dev server output");
-  }).then(() => {
+  const child = spawn("sh", ["-c", command], {
+    cwd: workspacePath,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, PORT: String(port) },
+  });
+
+  _processes.set(id, child);
+
+  child.stdout.on("data", (chunk: Buffer) => {
+    logger.debug({ jobId, output: chunk.toString("utf8").slice(0, 200) }, "Dev server output");
+  });
+
+  child.stderr.on("data", (chunk: Buffer) => {
+    logger.debug({ jobId, output: chunk.toString("utf8").slice(0, 200) }, "Dev server stderr");
+  });
+
+  child.on("close", (code) => {
+    _processes.delete(id);
+    const status = code === 0 ? "stopped" : "failed";
     db.update(devServers)
-      .set({ status: "stopped", stoppedAt: new Date().toISOString() })
+      .set({ status, stoppedAt: new Date().toISOString() })
       .where(eq(devServers.id, id))
       .run();
-  }).catch((err) => {
-    logger.error({ jobId, err }, "Dev server failed");
+    if (status === "failed") {
+      logger.error({ jobId, exitCode: code }, "Dev server failed");
+    }
+  });
+
+  child.on("error", (err) => {
+    _processes.delete(id);
+    logger.error({ jobId, err }, "Dev server error");
     db.update(devServers)
       .set({ status: "failed", stoppedAt: new Date().toISOString() })
       .where(eq(devServers.id, id))
@@ -68,10 +94,19 @@ export async function startDevServer(
   }, 2000);
 
   logger.info({ jobId, port, previewUrl }, "Dev server starting");
-  return { id, containerId, port, previewUrl, authToken };
+  return { id, sandboxId, port, previewUrl, authToken };
 }
 
 export async function stopDevServer(id: string): Promise<void> {
+  const child = _processes.get(id);
+  if (child) {
+    child.kill("SIGTERM");
+    setTimeout(() => {
+      if (!child.killed) child.kill("SIGKILL");
+    }, 5000);
+    _processes.delete(id);
+  }
+
   const db = getDb();
   db.update(devServers)
     .set({ status: "stopped", stoppedAt: new Date().toISOString() })
@@ -92,7 +127,7 @@ export async function getDevServerForJob(jobId: string): Promise<DevServerInfo |
 
   return {
     id: server.id,
-    containerId: server.containerId,
+    sandboxId: server.sandboxId,
     port: server.port,
     previewUrl: server.previewUrl ?? "",
     authToken: server.authToken,

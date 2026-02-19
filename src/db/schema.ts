@@ -114,7 +114,7 @@ export const kanbanStories = sqliteTable("kanban_stories", {
 export const devServers = sqliteTable("dev_servers", {
   id: text("id").primaryKey(),
   jobId: text("job_id").notNull().references(() => jobs.id),
-  containerId: text("container_id").notNull(),
+  sandboxId: text("sandbox_id").notNull(),
   port: integer("port").notNull(),
   previewUrl: text("preview_url"),
   authToken: text("auth_token").notNull(),

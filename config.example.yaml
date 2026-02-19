@@ -26,12 +26,8 @@ engine:
   # apiKey: "${ANTHROPIC_API_KEY}"
 
 sandbox:
-  runtime: runc          # Use "runsc" for gVisor on Linux
-  image: botreef-sandbox:latest
-  memoryMb: 2048
-  cpus: 1
-  networkEnabled: false
   workspaceDir: "./workspaces"
+  timeoutSeconds: 1800
 
 interfaces:
   rest:

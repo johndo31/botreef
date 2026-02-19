@@ -1,5 +1,5 @@
 export interface EngineRunOptions {
-  containerId: string;
+  sandboxId: string;
   instruction: string;
   workspacePath: string;
   model?: string;

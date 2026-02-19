@@ -79,13 +79,8 @@ const engineConfigSchema = z.object({
 });
 
 const sandboxConfigSchema = z.object({
-  runtime: z.enum(["runsc", "runc"]).default("runc"),
-  image: z.string().default("botreef-sandbox:latest"),
-  memoryMb: z.number().default(2048),
-  cpus: z.number().default(1),
-  networkEnabled: z.boolean().default(false),
-  allowedHosts: z.array(z.string()).default([]),
   workspaceDir: z.string().default("./workspaces"),
+  timeoutSeconds: z.number().default(1800),
 });
 
 const serverConfigSchema = z.object({

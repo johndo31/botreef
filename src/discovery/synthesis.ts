@@ -18,7 +18,7 @@ export interface SynthesisOutput {
 export async function synthesizeFindings(
   input: SynthesisInput,
   engineType: string,
-  containerId: string,
+  sandboxId: string,
   workspacePath: string,
 ): Promise<SynthesisOutput> {
   const engine = selectEngine(engineType);
@@ -50,7 +50,7 @@ Please provide:
 [Potential risks or concerns identified in the research]`;
 
   const result = await engine.run({
-    containerId,
+    sandboxId,
     instruction,
     workspacePath,
   });

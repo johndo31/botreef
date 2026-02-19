@@ -23,7 +23,7 @@
     "better-sqlite3": "^11.0.0",
     "bullmq": "^5.0.0",
     "discord.js": "^14.16.0",
-    "dockerode": "^4.0.0",
+
     "drizzle-orm": "^0.38.0",
     "fastify": "^5.0.0",
     "grammy": "^1.30.0",
@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
-    "@types/dockerode": "^3.3.0",
+
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^6.4.0",

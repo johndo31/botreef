@@ -18,7 +18,7 @@ export interface ResearchResult {
 export async function conductWebResearch(
   query: ResearchQuery,
   engineType: string,
-  containerId: string,
+  sandboxId: string,
   workspacePath: string,
 ): Promise<ResearchResult> {
   const engine = selectEngine(engineType);
@@ -26,7 +26,7 @@ export async function conductWebResearch(
   const instruction = buildResearchPrompt(query);
 
   const result = await engine.run({
-    containerId,
+    sandboxId,
     instruction,
     workspacePath,
   });

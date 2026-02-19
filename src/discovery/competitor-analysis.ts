@@ -20,7 +20,7 @@ export async function analyzeCompetitors(
   productDescription: string,
   competitors: CompetitorProfile[],
   engineType: string,
-  containerId: string,
+  sandboxId: string,
   workspacePath: string,
 ): Promise<CompetitorAnalysisResult> {
   const competitorList = competitors
@@ -39,7 +39,7 @@ export async function analyzeCompetitors(
       depth: "thorough",
     },
     engineType,
-    containerId,
+    sandboxId,
     workspacePath,
   );
 

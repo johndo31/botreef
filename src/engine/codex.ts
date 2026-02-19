@@ -16,19 +16,19 @@ export class CodexEngine implements Engine {
     ];
 
     logger.info(
-      { containerId: options.containerId },
+      { sandboxId: options.sandboxId },
       "Running Codex engine",
     );
 
     const result = await execInSandbox(
-      options.containerId,
+      options.sandboxId,
       command,
       options.onOutput,
     );
 
     const durationMs = Date.now() - startTime;
     logger.info(
-      { containerId: options.containerId, exitCode: result.exitCode, durationMs },
+      { sandboxId: options.sandboxId, exitCode: result.exitCode, durationMs },
       "Codex engine completed",
     );
 

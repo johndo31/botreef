@@ -16,7 +16,7 @@ describe("Config Loader", () => {
     expect(config.server.port).toBe(3000);
     expect(config.server.host).toBe("0.0.0.0");
     expect(config.engine.type).toBe("claude-code");
-    expect(config.sandbox.runtime).toBe("runc");
+    expect(config.sandbox.workspaceDir).toBe("./workspaces");
   });
 
   it("parses a valid YAML config", () => {

@@ -1,97 +1,125 @@
-import Docker from "dockerode";
-import { buildContainerConfig, type SandboxOptions } from "./container-config.js";
-import { demuxStream } from "./stream.js";
+import { spawn, type ChildProcess } from "node:child_process";
+import { generateId } from "../util/id.js";
 import { logger } from "../util/logger.js";
 
-let _docker: Docker | null = null;
-
-function getDocker(): Docker {
-  if (!_docker) {
-    _docker = new Docker();
-  }
-  return _docker;
+interface SandboxRecord {
+  id: string;
+  workspacePath: string;
+  processes: Map<number, ChildProcess>;
 }
 
-let _defaultOptions: Partial<SandboxOptions> = {};
+const _sandboxes = new Map<string, SandboxRecord>();
 
-export function configureSandbox(options: Partial<SandboxOptions>): void {
-  _defaultOptions = options;
+let _defaultWorkspaceDir = "./workspaces";
+let _defaultTimeoutSeconds = 1800;
+
+export function configureSandbox(options: {
+  workspaceDir?: string;
+  timeoutSeconds?: number;
+}): void {
+  if (options.workspaceDir) _defaultWorkspaceDir = options.workspaceDir;
+  if (options.timeoutSeconds) _defaultTimeoutSeconds = options.timeoutSeconds;
+}
+
+export function getWorkspaceDir(): string {
+  return _defaultWorkspaceDir;
 }
 
 export async function createSandbox(workspacePath: string): Promise<string> {
-  const docker = getDocker();
-  const options: SandboxOptions = {
-    image: _defaultOptions.image ?? "botreef-sandbox:latest",
-    runtime: _defaultOptions.runtime ?? "runc",
-    memoryMb: _defaultOptions.memoryMb ?? 2048,
-    cpus: _defaultOptions.cpus ?? 1,
-    networkEnabled: _defaultOptions.networkEnabled ?? false,
-    workspacePath,
-    allowedHosts: _defaultOptions.allowedHosts,
-  };
-
-  const config = buildContainerConfig(options);
-  const container = await docker.createContainer(config);
-  await container.start();
-
-  const id = container.id;
-  logger.info({ containerId: id, image: options.image }, "Sandbox created");
+  const id = generateId();
+  _sandboxes.set(id, { id, workspacePath, processes: new Map() });
+  logger.info({ sandboxId: id, workspacePath }, "Sandbox created");
   return id;
 }
 
+export function getSandboxWorkspace(sandboxId: string): string {
+  const record = _sandboxes.get(sandboxId);
+  if (!record) throw new Error(`Sandbox not found: ${sandboxId}`);
+  return record.workspacePath;
+}
+
 export async function execInSandbox(
-  containerId: string,
+  sandboxId: string,
   command: string[],
   onOutput?: (output: string) => void,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const docker = getDocker();
-  const container = docker.getContainer(containerId);
+  const record = _sandboxes.get(sandboxId);
+  if (!record) throw new Error(`Sandbox not found: ${sandboxId}`);
 
-  const exec = await container.exec({
-    Cmd: command,
-    AttachStdout: true,
-    AttachStderr: true,
-    WorkingDir: "/workspace",
+  const [cmd, ...args] = command;
+  if (!cmd) throw new Error("Empty command");
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      cwd: record.workspacePath,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env },
+    });
+
+    const pid = child.pid;
+    if (pid != null) record.processes.set(pid, child);
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutChunks.push(chunk);
+      onOutput?.(chunk.toString("utf8"));
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrChunks.push(chunk);
+      onOutput?.(chunk.toString("utf8"));
+    });
+
+    const timeout = setTimeout(() => {
+      logger.warn({ sandboxId, pid }, "Sandbox process timed out, sending SIGTERM");
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!child.killed) child.kill("SIGKILL");
+      }, 5000);
+    }, _defaultTimeoutSeconds * 1000);
+
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (pid != null) record.processes.delete(pid);
+
+      const exitCode = code ?? 1;
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
+
+      logger.info({ sandboxId, exitCode }, "Sandbox exec completed");
+      resolve({ exitCode, stdout, stderr });
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(timeout);
+      if (pid != null) record.processes.delete(pid);
+      reject(err);
+    });
   });
-
-  const stream = await exec.start({ hijack: true, stdin: false });
-  const output = await demuxStream(
-    stream,
-    onOutput,
-    (data) => onOutput?.(data),
-  );
-
-  const inspect = await exec.inspect();
-  const exitCode = inspect.ExitCode ?? 1;
-
-  logger.info({ containerId, exitCode }, "Sandbox exec completed");
-  return { exitCode, ...output };
 }
 
-export async function destroySandbox(containerId: string): Promise<void> {
-  const docker = getDocker();
-  const container = docker.getContainer(containerId);
+export async function destroySandbox(sandboxId: string): Promise<void> {
+  const record = _sandboxes.get(sandboxId);
+  if (!record) return;
 
-  try {
-    await container.stop({ t: 5 });
-  } catch {
-    // Container may already be stopped
+  for (const [pid, child] of record.processes) {
+    try {
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!child.killed) child.kill("SIGKILL");
+      }, 5000);
+    } catch {
+      // Process may already be dead
+    }
+    logger.debug({ sandboxId, pid }, "Killed sandbox process");
   }
 
-  try {
-    await container.remove({ force: true });
-  } catch {
-    // Container may already be removed
-  }
-
-  logger.info({ containerId }, "Sandbox destroyed");
+  _sandboxes.delete(sandboxId);
+  logger.info({ sandboxId }, "Sandbox destroyed");
 }
 
 export async function listSandboxes(): Promise<string[]> {
-  const docker = getDocker();
-  const containers = await docker.listContainers({
-    all: true,
-    filters: { label: ["botreef.managed=true"] },
-  });
-  return containers.map((c) => c.Id);
+  return Array.from(_sandboxes.keys());
 }

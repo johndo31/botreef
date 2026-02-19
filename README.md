@@ -11,7 +11,7 @@ Botreef turns a server into an autonomous coding agent. It wraps Claude Code CLI
 - **Bot memory** — Activity journal tracks what each bot has done, learned, and decided — injected into every future task as context
 - **Multi-channel input** — SSH, Telegram, Slack, Discord, email, GitHub webhooks, kanban boards, REST API, Web UI
 - **Autonomous coding** — AI reads your codebase, writes code, runs tests, commits, pushes, and creates PRs
-- **Secure by default** — gVisor sandboxing, per-project isolation, encrypted secrets, audit logging, firewall hardening
+- **Secure by default** — Process isolation, per-project workspaces, encrypted secrets, audit logging, firewall hardening
 - **Git-native workflow** — Clone repos, work on feature branches, require human approval before push
 - **Pluggable architecture** — Add new input channels with ~100 lines of code via the adapter interface
 - **Easy deployment** — One command to set up on any VPS with automatic TLS
@@ -48,7 +48,7 @@ curl -X POST https://your-server/api/v1/tasks \
 ┌──────────┐           ┌──────────────┐           ┌──────────────┐
 │ SSH      │           │              │           │              │
 │ Telegram │──────────▶│  Message     │           │  Sandbox     │
-│ Slack    │  Inbound  │  Router      │──────────▶│  (gVisor)    │
+│ Slack    │  Inbound  │  Router      │──────────▶│  (process)   │
 │ Discord  │  Message  │  + Auth      │  Job      │              │
 │ Email    │           │  + RBAC      │  Queue    │  Claude Code │
 │ Webhooks │◀──────────│              │◀──────────│  CLI / Codex │
@@ -90,16 +90,16 @@ curl -X POST https://your-server/api/v1/projects/myapp/stories \
 curl https://your-server/api/v1/bots/bot-id/journal
 ```
 
-Each bot maintains a **journal** — a log of tasks started, completed, failed, observations, decisions, and learnings. Recent journal entries are automatically injected into the instruction preamble for every future task, giving bots persistent memory across jobs without keeping containers alive.
+Each bot maintains a **journal** — a log of tasks started, completed, failed, observations, decisions, and learnings. Recent journal entries are automatically injected into the instruction preamble for every future task, giving bots persistent memory across jobs.
 
 ## How It Works
 
 1. A message arrives from any channel (SSH, Telegram, webhook, bot loop, etc.)
 2. The adapter normalizes it into a standard `InboundMessage`
 3. The router authenticates the user/bot, resolves the target project, and enqueues a job
-4. The job processor creates an isolated sandbox container (Docker + gVisor)
+4. The job processor creates a sandbox (tracked child process with workspace directory)
 5. If the job belongs to a bot, context (identity, system prompt, recent journal) is injected into the instruction
-6. Claude Code CLI runs inside the sandbox against the cloned repo
+6. Claude Code CLI runs as a child process in the workspace directory
 7. Changes are committed to a feature branch; journal entries are written
 8. Optionally: human approval required before push
 9. Code is pushed, PR is created, and the user/bot is notified
@@ -125,11 +125,9 @@ Built on [OpenClaw](https://github.com/openclaw/openclaw)'s channel layer for ba
 
 Botreef assumes AI-executed code is untrusted. Defense in depth:
 
-- **gVisor (runsc)** — Userspace kernel intercepts all syscalls. Kernel exploits don't escape.
-- **Container isolation** — Each project gets its own Docker container with resource limits
-- **Network default-deny** — Sandbox containers have no internet access by default; allowlisted outbound only
-- **Read-only rootfs** — Only `/workspace`, `/tmp`, and `/home` are writable inside sandboxes
-- **Encrypted secrets** — API keys and tokens encrypted at rest, injected via env vars, never on disk in sandboxes
+- **Process isolation** — Each job runs as a child process with its own workspace directory and enforced timeouts
+- **Per-project workspaces** — Projects are isolated into separate workspace directories
+- **Encrypted secrets** — API keys and tokens encrypted at rest, injected via env vars
 - **Unified auth** — Single identity system across all channels with per-project RBAC
 - **Audit log** — Every action logged as structured JSON, streamable to external service
 - **Firewall** — Only ports 22, 80, 443 exposed. Everything else firewalled via nftables
@@ -144,7 +142,7 @@ Botreef assumes AI-executed code is untrusted. Defense in depth:
 | Web Framework | Fastify 5 | Fast, plugin system, native WebSocket |
 | Database | SQLite (better-sqlite3 + Drizzle ORM) | Zero-config, single file, perfect for single-server |
 | Task Queue | BullMQ + Valkey | Progress tracking, retry, concurrency control |
-| Sandbox | Docker + gVisor (runsc) | Userspace kernel isolation |
+| Sandbox | child_process.spawn | Direct host execution with timeout enforcement |
 | Reverse Proxy | Caddy | Auto-TLS, zero-config HTTPS |
 | AI Engine | Claude Code CLI / Codex CLI | Wrapped as subprocess, user brings own API key |
 | Git | simple-git | Clone, branch, commit, push, PR creation |
@@ -264,7 +262,6 @@ This gives you a public `https://your-machine.tail1234.ts.net` URL with TLS, wit
 Botreef runs fine on a local machine for development. You need:
 
 - **Node.js 22+** and npm
-- **Docker** (for sandbox containers)
 - **Valkey or Redis** (for the job queue) — or just `docker compose up valkey`
 
 ```bash
@@ -276,8 +273,7 @@ npm run dev
 ```
 
 Notes:
-- gVisor (`runsc`) is Linux-only — on macOS/Windows, sandboxes use standard Docker isolation (`runc`), which is fine for local use
-- Sandbox containers have network disabled by default (`networkEnabled: false`)
+- No Docker required — AI engines run as child processes directly on the host
 - SQLite database is a single file (`./botreef.db`), no setup needed
 - All messaging adapters (Telegram, Slack, etc.) are disabled by default — only REST, Web UI, and SSH start
 

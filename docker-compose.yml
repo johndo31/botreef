@@ -6,11 +6,11 @@ services:
     ports:
       - "3000:3000"
       - "2222:2222"
+      - "10000-10100:10000-10100"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./workspaces:/app/workspaces
       - ./data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - NODE_ENV=production
       - DATABASE_URL=/app/data/botreef.db

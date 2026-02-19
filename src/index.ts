@@ -36,11 +36,8 @@ async function main() {
 
   // 3. Configure subsystems
   configureSandbox({
-    image: config.sandbox.image,
-    runtime: config.sandbox.runtime,
-    memoryMb: config.sandbox.memoryMb,
-    cpus: config.sandbox.cpus,
-    networkEnabled: config.sandbox.networkEnabled,
+    workspaceDir: config.sandbox.workspaceDir,
+    timeoutSeconds: config.sandbox.timeoutSeconds,
   });
   configureDevServer(config.server.baseUrl);
   setWorkspaceBaseDir(config.sandbox.workspaceDir);

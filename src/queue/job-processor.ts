@@ -52,7 +52,7 @@ export async function processJob(
   let branch: string | undefined;
   let commitSha: string | undefined;
   let prUrl: string | undefined;
-  let containerId: string | undefined;
+  let sandboxId: string | undefined;
 
   try {
     // Step 1: Clone or pull repository
@@ -70,11 +70,11 @@ export async function processJob(
     }
     callbacks.onProgress(20);
 
-    // Step 3: Create sandbox container
+    // Step 3: Create sandbox
     emitEvent(payload, "task:progress", { status: "running", progress: 20 }, callbacks);
     updateJobStatus(payload.jobId, "running");
 
-    containerId = await createSandbox(workspacePath);
+    sandboxId = await createSandbox(workspacePath);
     callbacks.onProgress(30);
 
     // Step 3.5: Inject bot context if this is a bot job
@@ -91,7 +91,7 @@ export async function processJob(
     // Step 4: Run AI engine in sandbox
     const engine = selectEngine(payload.engineType);
     const engineResult = await engine.run({
-      containerId,
+      sandboxId,
       instruction: finalInstruction,
       workspacePath,
       onOutput: (output: string) => {
@@ -190,9 +190,9 @@ export async function processJob(
       durationMs: Date.now() - startTime,
     };
   } finally {
-    if (containerId) {
-      await destroySandbox(containerId).catch((err) => {
-        logger.error({ containerId, err }, "Failed to destroy sandbox");
+    if (sandboxId) {
+      await destroySandbox(sandboxId).catch((err) => {
+        logger.error({ sandboxId, err }, "Failed to destroy sandbox");
       });
     }
   }
