@@ -219,6 +219,46 @@ interface Adapter {
 
 See `src/adapters/` for examples.
 
+## Mobile Access with Tailscale
+
+Access Botreef's Web UI, terminal, and dev server previews from your phone without exposing anything to the public internet.
+
+[Tailscale](https://tailscale.com) creates an encrypted WireGuard mesh between your devices. Your Botreef server and phone join the same network — no open ports, no DNS configuration, no TLS certificates to manage.
+
+**1. Install Tailscale on your server**
+
+```bash
+# Ubuntu/Debian
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+**2. Install Tailscale on your phone**
+
+Download from [App Store](https://apps.apple.com/app/tailscale/id1470499037) or [Google Play](https://play.google.com/store/apps/details?id=com.tailscale.ipn), sign in with the same account.
+
+**3. Connect**
+
+Your server gets a stable Tailscale IP (e.g. `100.x.y.z`). Open it on your phone:
+
+- **Web UI**: `http://100.x.y.z:3000`
+- **Dev server previews**: `http://100.x.y.z:3000/preview/{jobId}`
+- **REST API**: `http://100.x.y.z:3000/api/v1/...`
+- **SSH**: `ssh -p 2222 botreef@100.x.y.z`
+
+No ports are exposed publicly. Traffic is end-to-end encrypted over WireGuard. Works on cellular, WiFi, anywhere.
+
+**Optional: Tailscale Funnel**
+
+If you *do* want to share a preview URL with someone who isn't on your Tailscale network (e.g. a client demo), you can selectively expose a single port:
+
+```bash
+# Temporarily expose port 3000 to a public Tailscale URL
+tailscale funnel 3000
+```
+
+This gives you a public `https://your-machine.tail1234.ts.net` URL with TLS, without touching your firewall. Stop it when you're done.
+
 ## Running Locally
 
 Botreef runs fine on a local machine for development. You need:
